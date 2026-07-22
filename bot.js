@@ -8,7 +8,7 @@ const {
 const http = require('http');
 
 const TOKEN      = process.env.DISCORD_TOKEN;
-const CHANNEL_ID = '1528786568347648140';
+const CHANNEL_ID = '1528841016155701309';
 const PORT       = process.env.PORT || 3000;
 
 const client = new Client({
