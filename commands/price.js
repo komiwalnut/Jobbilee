@@ -32,6 +32,17 @@ async function steamDetails(appId) {
     return data[appId]?.success ? data[appId].data : null;
 }
 
+async function getUsdToPhpRate() {
+    try {
+        const { data } = await axios.get('https://api.frankfurter.app/latest?from=USD&to=PHP', {
+            timeout: 5000,
+        });
+        return data.rates?.PHP ?? null;
+    } catch {
+        return null;
+    }
+}
+
 // CheapShark tracks historical lows across stores — free JSON API, no Cloudflare
 async function cheapSharkHistory(appId, title) {
     try {
@@ -64,14 +75,6 @@ function formatUnixDate(unix) {
     });
 }
 
-function calcCut(originalCents, lowestPriceStr) {
-    if (!originalCents || !lowestPriceStr) return null;
-    const original = originalCents / 100;
-    const lowest   = parseFloat(lowestPriceStr);
-    if (lowest >= original || original <= 0) return null;
-    return `-${Math.round((1 - lowest / original) * 100)}%`;
-}
-
 // Label shown in the select menu option description
 function searchPriceLabel(item) {
     const p = item.price;
@@ -84,7 +87,7 @@ function searchPriceLabel(item) {
     return price;
 }
 
-function buildPriceEmbed(appId, gameName, details, cheap) {
+function buildPriceEmbed(appId, gameName, details, cheap, usdToPhp) {
     const storeUrl   = `https://store.steampowered.com/app/${appId}/`;
     const steamdbUrl = `https://steamdb.info/app/${appId}/`;
     const title      = details?.name ?? gameName;
@@ -100,21 +103,15 @@ function buildPriceEmbed(appId, gameName, details, cheap) {
     } else {
         const p = details?.price_overview;
         if (p) {
-            embed.addFields({
-                name: 'Original Price',
-                value: p.initial_formatted || formatCents(p.initial),
-                inline: true,
-            });
             if (p.discount_percent > 0) {
-                embed.addFields({
-                    name: `On Sale (-${p.discount_percent}%)`,
-                    value: p.final_formatted || formatCents(p.final),
-                    inline: true,
-                });
+                embed.addFields(
+                    { name: 'Original Price', value: p.initial_formatted || formatCents(p.initial), inline: true },
+                    { name: `On Sale (-${p.discount_percent}%)`, value: p.final_formatted || formatCents(p.final), inline: true },
+                );
                 embed.setColor(0x4c6b22);
             } else {
                 embed.addFields({
-                    name: 'Current Price',
+                    name: 'Price',
                     value: p.final_formatted || formatCents(p.final),
                     inline: true,
                 });
@@ -124,7 +121,11 @@ function buildPriceEmbed(appId, gameName, details, cheap) {
         }
     }
 
-    const histPrice = cheap?.price ? `$${cheap.price} USD` : null;
+    const histPrice = cheap?.price
+        ? usdToPhp
+            ? `₱${(parseFloat(cheap.price) * usdToPhp).toFixed(2)}`
+            : `$${cheap.price} USD`
+        : null;
     const histDate  = cheap?.date ? formatUnixDate(cheap.date) : null;
 
     if (histPrice) embed.addFields({ name: 'Historical Low',   value: histPrice, inline: true });
@@ -139,12 +140,13 @@ function buildPriceEmbed(appId, gameName, details, cheap) {
 }
 
 async function fetchAndShowPrice(interaction, appId, gameName) {
-    const [details, cheap] = await Promise.all([
+    const [details, cheap, usdToPhp] = await Promise.all([
         steamDetails(appId).catch(() => null),
         cheapSharkHistory(appId, gameName).catch(() => null),
+        getUsdToPhpRate().catch(() => null),
     ]);
 
-    const embed = buildPriceEmbed(appId, gameName, details, cheap);
+    const embed = buildPriceEmbed(appId, gameName, details, cheap, usdToPhp);
     await interaction.editReply({ content: '', components: [], embeds: [embed] });
 }
 
