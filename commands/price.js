@@ -16,7 +16,7 @@ const CHEAPSHARK_UA = 'Jobbilee-Discord-Bot/1.0 (Steam price lookup; github.com/
 
 async function steamSearch(query) {
     const { data } = await axios.get('https://store.steampowered.com/api/storesearch/', {
-        params: { term: query, l: 'english', cc: 'US' },
+        params: { term: query, l: 'english', cc: 'PH' },
         headers: STEAM_HEADERS,
         timeout: 10000,
     });
@@ -25,7 +25,7 @@ async function steamSearch(query) {
 
 async function steamDetails(appId) {
     const { data } = await axios.get('https://store.steampowered.com/api/appdetails/', {
-        params: { appids: appId, cc: 'us', l: 'en' },
+        params: { appids: appId, cc: 'ph', l: 'en' },
         headers: STEAM_HEADERS,
         timeout: 10000,
     });
@@ -92,7 +92,7 @@ function buildPriceEmbed(appId, gameName, details, cheap) {
     const embed = new EmbedBuilder()
         .setTitle(title)
         .setURL(storeUrl)
-        .setThumbnail(`https://cdn.akamai.steamstatic.com/steam/apps/${appId}/header.jpg`)
+        .setImage(`https://cdn.akamai.steamstatic.com/steam/apps/${appId}/header.jpg`)
         .setColor(0x1b2838);
 
     if (details?.is_free) {
