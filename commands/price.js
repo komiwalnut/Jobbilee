@@ -55,7 +55,7 @@ async function cheapSharkHistory(appId, title) {
 }
 
 function formatCents(cents) {
-    return `$${(cents / 100).toFixed(2)}`;
+    return `₱${(cents / 100).toFixed(2)}`;
 }
 
 function formatUnixDate(unix) {
@@ -124,11 +124,9 @@ function buildPriceEmbed(appId, gameName, details, cheap) {
         }
     }
 
-    const histPrice = cheap?.price ? `$${cheap.price}` : null;
-    const histCut   = calcCut(details?.price_overview?.initial, cheap?.price);
+    const histPrice = cheap?.price ? `$${cheap.price} USD` : null;
     const histDate  = cheap?.date ? formatUnixDate(cheap.date) : null;
 
-    if (histCut)   embed.addFields({ name: 'Highest Discount', value: histCut,   inline: true });
     if (histPrice) embed.addFields({ name: 'Historical Low',   value: histPrice, inline: true });
     if (histDate)  embed.addFields({ name: 'Last Sale Date',   value: histDate,  inline: true });
 
