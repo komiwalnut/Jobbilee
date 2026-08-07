@@ -73,7 +73,7 @@ async function joinVoice() {
   }
 }
 
-client.once('clientReady', () => {
+client.once('ready', () => {
   console.log(`Logged in as ${client.user.tag}`);
   joinVoice();
 });
