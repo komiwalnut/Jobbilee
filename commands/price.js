@@ -3,19 +3,21 @@ const {
     StringSelectMenuBuilder, StringSelectMenuOptionBuilder, ActionRowBuilder,
 } = require('discord.js');
 const axios = require('axios');
-const cheerio = require('cheerio');
 
 const CUSTOM_ID_PREFIX = 'price_select_';
 
-const HEADERS = {
+const STEAM_HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
     'Accept-Language': 'en-US,en;q=0.9',
 };
 
+// CheapShark requires a descriptive User-Agent or it returns 400
+const CHEAPSHARK_UA = 'Jobbilee-Discord-Bot/1.0 (Steam price lookup; github.com/komiwalnut/Jobbilee)';
+
 async function steamSearch(query) {
     const { data } = await axios.get('https://store.steampowered.com/api/storesearch/', {
         params: { term: query, l: 'english', cc: 'US' },
-        headers: HEADERS,
+        headers: STEAM_HEADERS,
         timeout: 10000,
     });
     return (data.items ?? []).filter(i => i.type === 'app');
@@ -24,17 +26,18 @@ async function steamSearch(query) {
 async function steamDetails(appId) {
     const { data } = await axios.get('https://store.steampowered.com/api/appdetails/', {
         params: { appids: appId, cc: 'us', l: 'en' },
-        headers: HEADERS,
+        headers: STEAM_HEADERS,
         timeout: 10000,
     });
     return data[appId]?.success ? data[appId].data : null;
 }
 
-// CheapShark tracks historical lows — free, no Cloudflare
+// CheapShark tracks historical lows across stores — free JSON API, no Cloudflare
 async function cheapSharkHistory(appId, title) {
     try {
         const { data: list } = await axios.get('https://www.cheapshark.com/api/1.0/games', {
             params: { title, exact: 0, limit: 10 },
+            headers: { 'User-Agent': CHEAPSHARK_UA },
             timeout: 8000,
         });
         const match = list.find(g => g.steamAppID === String(appId));
@@ -42,49 +45,10 @@ async function cheapSharkHistory(appId, title) {
 
         const { data: game } = await axios.get('https://www.cheapshark.com/api/1.0/games', {
             params: { id: match.gameID },
+            headers: { 'User-Agent': CHEAPSHARK_UA },
             timeout: 8000,
         });
         return game?.cheapestPriceEver ?? null;  // { price: "X.XX", date: unixTimestamp }
-    } catch {
-        return null;
-    }
-}
-
-// SteamDB has Cloudflare — best-effort, may return null
-async function steamDBHistory(appId) {
-    try {
-        const { data: html } = await axios.get(`https://steamdb.info/app/${appId}/`, {
-            headers: {
-                ...HEADERS,
-                Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            },
-            timeout: 12000,
-        });
-        const $ = cheerio.load(html);
-
-        let lowestPrice = null, lowestCut = null, lowestDate = null;
-
-        // SteamDB renders a price table in the initial HTML
-        // Columns: Sub name | Current price | Historical low (w/ date) | Cut %
-        $('table.table-prices tbody tr, #table-prices tbody tr').each((_, row) => {
-            if (lowestPrice) return false;
-            const tds = $(row).find('td');
-            if (tds.length < 4) return;
-
-            const lowestTd = tds.eq(2).text().trim();
-            const cutTd    = tds.eq(3).text().trim();
-            const priceM   = lowestTd.match(/\$([\d,]+\.?\d*)/);
-            const dateM    = lowestTd.match(/(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2},?\s+\d{4}/i);
-            const cutM     = cutTd.match(/-\d+/);
-
-            if (priceM) {
-                lowestPrice = `$${priceM[1]}`;
-                lowestDate  = dateM?.[0] ?? null;
-                lowestCut   = cutM ? `${cutM[0]}%` : null;
-            }
-        });
-
-        return lowestPrice ? { lowestPrice, lowestCut, lowestDate } : null;
     } catch {
         return null;
     }
@@ -120,7 +84,7 @@ function searchPriceLabel(item) {
     return price;
 }
 
-function buildPriceEmbed(appId, gameName, details, cheap, steamdb) {
+function buildPriceEmbed(appId, gameName, details, cheap) {
     const storeUrl   = `https://store.steampowered.com/app/${appId}/`;
     const steamdbUrl = `https://steamdb.info/app/${appId}/`;
     const title      = details?.name ?? gameName;
@@ -160,9 +124,9 @@ function buildPriceEmbed(appId, gameName, details, cheap, steamdb) {
         }
     }
 
-    const histPrice = steamdb?.lowestPrice ?? (cheap?.price ? `$${cheap.price}` : null);
-    const histCut   = steamdb?.lowestCut   ?? calcCut(details?.price_overview?.initial, cheap?.price);
-    const histDate  = steamdb?.lowestDate  ?? (cheap?.date ? formatUnixDate(cheap.date) : null);
+    const histPrice = cheap?.price ? `$${cheap.price}` : null;
+    const histCut   = calcCut(details?.price_overview?.initial, cheap?.price);
+    const histDate  = cheap?.date ? formatUnixDate(cheap.date) : null;
 
     if (histCut)   embed.addFields({ name: 'Highest Discount', value: histCut,   inline: true });
     if (histPrice) embed.addFields({ name: 'Historical Low',   value: histPrice, inline: true });
@@ -177,13 +141,12 @@ function buildPriceEmbed(appId, gameName, details, cheap, steamdb) {
 }
 
 async function fetchAndShowPrice(interaction, appId, gameName) {
-    const [details, cheap, steamdb] = await Promise.all([
+    const [details, cheap] = await Promise.all([
         steamDetails(appId).catch(() => null),
         cheapSharkHistory(appId, gameName).catch(() => null),
-        steamDBHistory(appId).catch(() => null),
     ]);
 
-    const embed = buildPriceEmbed(appId, gameName, details, cheap, steamdb);
+    const embed = buildPriceEmbed(appId, gameName, details, cheap);
     await interaction.editReply({ content: '', components: [], embeds: [embed] });
 }
 
