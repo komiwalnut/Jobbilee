@@ -11,7 +11,7 @@ const STEAM_HEADERS = {
     'Accept-Language': 'en-US,en;q=0.9',
 };
 
-const CHEAPSHARK_UA = 'Jobbilee-Discord-Bot/1.0 (Steam price lookup; github.com/komiwalnut/Jobbilee)';
+const ITAD_API = 'https://api.isthereanydeal.com';
 
 async function steamSearch(query) {
     const { data } = await axios.get('https://store.steampowered.com/api/storesearch/', {
@@ -31,23 +31,26 @@ async function steamDetails(appId) {
     return data[appId]?.success ? data[appId].data : null;
 }
 
-// CheapShark prices are in USD — shown as-is, no currency conversion
-async function cheapSharkHistory(appId, title) {
+// Returns { amount, currency, timestamp } or null
+async function itadHistory(appId) {
     try {
-        const { data: list } = await axios.get('https://www.cheapshark.com/api/1.0/games', {
-            params: { title, exact: 0, limit: 10 },
-            headers: { 'User-Agent': CHEAPSHARK_UA },
-            timeout: 8000,
-        });
-        const match = list.find(g => g.steamAppID === String(appId));
-        if (!match) return null;
+        const key = process.env.ITAD_API_KEY;
 
-        const { data: game } = await axios.get('https://www.cheapshark.com/api/1.0/games', {
-            params: { id: match.gameID },
-            headers: { 'User-Agent': CHEAPSHARK_UA },
+        const { data: lookup } = await axios.get(`${ITAD_API}/games/lookup/v1`, {
+            params: { appid: appId, key },
             timeout: 8000,
         });
-        return game?.cheapestPriceEver ?? null;  // { price: "X.XX", date: unixTimestamp }
+        if (!lookup.found) return null;
+
+        const { data: lows } = await axios.post(
+            `${ITAD_API}/games/historylow/v1`,
+            [lookup.game.id],
+            { params: { country: 'PH', key }, timeout: 8000 },
+        );
+        const low = lows?.[0]?.low;
+        if (!low) return null;
+
+        return { amount: low.price.amount, currency: low.price.currency, timestamp: low.timestamp, shop: low.shop.name };
     } catch {
         return null;
     }
@@ -109,8 +112,13 @@ function buildPriceEmbed(appId, gameName, details, cheap) {
         }
     }
 
-    if (cheap?.price) embed.addFields({ name: 'Historical Low (USD)', value: `$${cheap.price}`, inline: true });
-    if (cheap?.date)  embed.addFields({ name: 'Last Sale Date',       value: formatUnixDate(cheap.date), inline: true });
+    if (cheap?.amount) {
+        const symbol = cheap.currency === 'PHP' ? '₱' : cheap.currency + ' ';
+        embed.addFields(
+            { name: 'Historical Low', value: `${symbol}${cheap.amount.toFixed(2)} via ${cheap.shop}`, inline: true },
+            { name: 'Last Sale Date', value: formatUnixDate(new Date(cheap.timestamp).getTime() / 1000), inline: true },
+        );
+    }
 
     embed.addFields({
         name: '​',
@@ -123,7 +131,7 @@ function buildPriceEmbed(appId, gameName, details, cheap) {
 async function fetchAndShowPrice(interaction, appId, gameName) {
     const [details, cheap] = await Promise.all([
         steamDetails(appId).catch(() => null),
-        cheapSharkHistory(appId, gameName).catch(() => null),
+        itadHistory(appId).catch(() => null),
     ]);
     const embed = buildPriceEmbed(appId, gameName, details, cheap);
     await interaction.editReply({ content: '', components: [], embeds: [embed] });
