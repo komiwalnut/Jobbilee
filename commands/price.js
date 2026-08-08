@@ -11,6 +11,8 @@ const STEAM_HEADERS = {
     'Accept-Language': 'en-US,en;q=0.9',
 };
 
+const CHEAPSHARK_UA = 'Jobbilee-Discord-Bot/1.0 (Steam price lookup; github.com/komiwalnut/Jobbilee)';
+
 async function steamSearch(query) {
     const { data } = await axios.get('https://store.steampowered.com/api/storesearch/', {
         params: { term: query, l: 'english', cc: 'PH' },
@@ -29,6 +31,33 @@ async function steamDetails(appId) {
     return data[appId]?.success ? data[appId].data : null;
 }
 
+// CheapShark prices are in USD — shown as-is, no currency conversion
+async function cheapSharkHistory(appId, title) {
+    try {
+        const { data: list } = await axios.get('https://www.cheapshark.com/api/1.0/games', {
+            params: { title, exact: 0, limit: 10 },
+            headers: { 'User-Agent': CHEAPSHARK_UA },
+            timeout: 8000,
+        });
+        const match = list.find(g => g.steamAppID === String(appId));
+        if (!match) return null;
+
+        const { data: game } = await axios.get('https://www.cheapshark.com/api/1.0/games', {
+            params: { id: match.gameID },
+            headers: { 'User-Agent': CHEAPSHARK_UA },
+            timeout: 8000,
+        });
+        return game?.cheapestPriceEver ?? null;  // { price: "X.XX", date: unixTimestamp }
+    } catch {
+        return null;
+    }
+}
+
+function formatUnixDate(unix) {
+    return new Date(unix * 1000).toLocaleDateString('en-US', {
+        year: 'numeric', month: 'long', day: 'numeric',
+    });
+}
 
 function formatCents(cents) {
     return `₱${(cents / 100).toFixed(2)}`;
@@ -46,7 +75,7 @@ function searchPriceLabel(item) {
     return price;
 }
 
-function buildPriceEmbed(appId, gameName, details) {
+function buildPriceEmbed(appId, gameName, details, cheap) {
     const storeUrl   = `https://store.steampowered.com/app/${appId}/`;
     const steamdbUrl = `https://steamdb.info/app/${appId}/`;
     const title      = details?.name ?? gameName;
@@ -80,6 +109,9 @@ function buildPriceEmbed(appId, gameName, details) {
         }
     }
 
+    if (cheap?.price) embed.addFields({ name: 'Historical Low (USD)', value: `$${cheap.price}`, inline: true });
+    if (cheap?.date)  embed.addFields({ name: 'Last Sale Date',       value: formatUnixDate(cheap.date), inline: true });
+
     embed.addFields({
         name: '​',
         value: `[View full price history on SteamDB ↗](${steamdbUrl})`,
@@ -89,8 +121,11 @@ function buildPriceEmbed(appId, gameName, details) {
 }
 
 async function fetchAndShowPrice(interaction, appId, gameName) {
-    const details = await steamDetails(appId).catch(() => null);
-    const embed = buildPriceEmbed(appId, gameName, details);
+    const [details, cheap] = await Promise.all([
+        steamDetails(appId).catch(() => null),
+        cheapSharkHistory(appId, gameName).catch(() => null),
+    ]);
+    const embed = buildPriceEmbed(appId, gameName, details, cheap);
     await interaction.editReply({ content: '', components: [], embeds: [embed] });
 }
 
