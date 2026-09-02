@@ -91,7 +91,7 @@ async function joinVoice() {
   }
 }
 
-client.once('clientReady', async () => {
+client.once('ready', async () => {
   console.log(`Logged in as ${client.user.tag}`);
 
   // Register slash commands globally (propagates within ~1 hour)
@@ -126,8 +126,6 @@ client.on('interactionCreate', async interaction => {
 
 client.on('error', err => console.error('Client error:', err.message));
 client.on('shardError', err => console.error('Shard error:', err.message));
-client.on('warn', message => console.warn('[warn]', message));
-client.on('debug', message => console.log('[debug]', message));
 
 process.on('unhandledRejection', err => {
   console.error('Unhandled rejection:', err);
