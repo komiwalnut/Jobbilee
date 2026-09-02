@@ -61,6 +61,10 @@ async function joinVoice() {
       console.log(`[${new Date().toISOString()}] Joined voice channel: ${channel.name}`);
     });
 
+    connection.on('error', err => {
+      console.error(`[${new Date().toISOString()}] Voice connection error:`, err.message);
+    });
+
     connection.on(VoiceConnectionStatus.Disconnected, async () => {
       try {
         await Promise.race([
