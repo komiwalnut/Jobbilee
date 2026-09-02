@@ -1,4 +1,4 @@
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const axios = require('axios');
 
 module.exports = {
@@ -7,7 +7,7 @@ module.exports = {
         .setDescription('Restart the Mcdollibee bot service on Render'),
 
     async execute(interaction) {
-        await interaction.deferReply({ ephemeral: true });
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
         const apiKey    = process.env.RENDER_API_KEY;
         const serviceId = process.env.MCDO_SERVICE_ID;
@@ -24,8 +24,9 @@ module.exports = {
             );
             await interaction.editReply('Mcdollibee is restarting...');
         } catch (err) {
-            const status = err.response?.status;
-            await interaction.editReply(`Failed to restart Mcdollibee (HTTP ${status ?? 'unknown'}).`);
+            const status  = err.response?.status;
+            const message = err.response?.data?.message ?? err.message;
+            await interaction.editReply(`Failed to restart Mcdollibee (HTTP ${status ?? 'unknown'}): ${message}`);
         }
     },
 };
