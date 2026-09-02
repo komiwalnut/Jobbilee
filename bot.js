@@ -126,6 +126,8 @@ client.on('interactionCreate', async interaction => {
 
 client.on('error', err => console.error('Client error:', err.message));
 client.on('shardError', err => console.error('Shard error:', err.message));
+client.on('warn', message => console.warn('[warn]', message));
+client.on('debug', message => console.log('[debug]', message));
 
 process.on('unhandledRejection', err => {
   console.error('Unhandled rejection:', err);
