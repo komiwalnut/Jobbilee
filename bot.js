@@ -150,6 +150,23 @@ process.on('unhandledRejection', err => {
   console.error('Unhandled rejection:', err);
 });
 
+function shutdown() {
+  console.log(`[${new Date().toISOString()}] Shutting down, leaving voice channel...`);
+  if (reconnectTimeout) {
+    clearTimeout(reconnectTimeout);
+    reconnectTimeout = null;
+  }
+  if (connection) {
+    connection.destroy();
+    connection = null;
+  }
+  client.destroy();
+  process.exit(0);
+}
+
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
+
 // HTTP server — satisfies Render's web service requirement and lets UptimeRobot
 // ping the bot to prevent the free-tier spin-down.
 http.createServer((req, res) => {
