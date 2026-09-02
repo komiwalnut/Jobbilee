@@ -1,15 +1,22 @@
 require('dotenv').config();
-const { Client, GatewayIntentBits } = require('discord.js');
+const { Client, GatewayIntentBits, Collection, REST, Routes } = require('discord.js');
 const {
   joinVoiceChannel,
   VoiceConnectionStatus,
   entersState,
 } = require('@discordjs/voice');
 const http = require('http');
+const fs   = require('fs');
+const path = require('path');
 
 const TOKEN      = process.env.DISCORD_TOKEN;
 const CHANNEL_ID = '1491526270939431013';
 const PORT       = process.env.PORT || 3000;
+
+if (!TOKEN) {
+  console.error('DISCORD_TOKEN environment variable is not set.');
+  process.exit(1);
+}
 
 const client = new Client({
   intents: [
@@ -17,6 +24,14 @@ const client = new Client({
     GatewayIntentBits.GuildVoiceStates,
   ],
 });
+
+// Load slash commands from ./commands/
+client.commands = new Collection();
+const commandsPath = path.join(__dirname, 'commands');
+for (const file of fs.readdirSync(commandsPath).filter(f => f.endsWith('.js'))) {
+  const cmd = require(path.join(commandsPath, file));
+  client.commands.set(cmd.data.name, cmd);
+}
 
 let connection = null;
 let reconnectTimeout = null;
@@ -48,10 +63,9 @@ async function joinVoice() {
 
     connection.on(VoiceConnectionStatus.Disconnected, async () => {
       try {
-        // Discord may just be transitioning states — wait briefly before giving up
         await Promise.race([
-          entersState(connection, VoiceConnectionStatus.Signalling,  5_000),
-          entersState(connection, VoiceConnectionStatus.Connecting,  5_000),
+          entersState(connection, VoiceConnectionStatus.Signalling, 5_000),
+          entersState(connection, VoiceConnectionStatus.Connecting, 5_000),
         ]);
       } catch {
         console.warn(`[${new Date().toISOString()}] Disconnected. Rejoining in 5s...`);
@@ -73,12 +87,40 @@ async function joinVoice() {
   }
 }
 
-client.once('ready', () => {
+client.once('ready', async () => {
   console.log(`Logged in as ${client.user.tag}`);
+
+  // Register slash commands globally (propagates within ~1 hour)
+  try {
+    const rest = new REST().setToken(TOKEN);
+    const commands = [...client.commands.values()].map(cmd => cmd.data.toJSON());
+    await rest.put(Routes.applicationCommands(client.application.id), { body: commands });
+    console.log(`Registered ${commands.length} slash command(s).`);
+  } catch (err) {
+    console.error('Failed to register slash commands:', err.message);
+  }
+
   joinVoice();
 });
 
-client.on('error', (err) => console.error('Client error:', err.message));
+client.on('interactionCreate', async interaction => {
+  if (!interaction.isChatInputCommand()) return;
+  const cmd = client.commands.get(interaction.commandName);
+  if (!cmd) return;
+  try {
+    await cmd.execute(interaction);
+  } catch (err) {
+    console.error(`Error in /${interaction.commandName}:`, err.message);
+    const msg = { content: 'Something went wrong running that command.', ephemeral: true };
+    if (interaction.deferred || interaction.replied) {
+      await interaction.editReply(msg).catch(() => {});
+    } else {
+      await interaction.reply(msg).catch(() => {});
+    }
+  }
+});
+
+client.on('error', err => console.error('Client error:', err.message));
 
 // HTTP server — satisfies Render's web service requirement and lets UptimeRobot
 // ping the bot to prevent the free-tier spin-down.
@@ -88,10 +130,5 @@ http.createServer((req, res) => {
 }).listen(PORT, () => {
   console.log(`Keep-alive server listening on port ${PORT}`);
 });
-
-if (!TOKEN) {
-  console.error('DISCORD_TOKEN environment variable is not set.');
-  process.exit(1);
-}
 
 client.login(TOKEN);
