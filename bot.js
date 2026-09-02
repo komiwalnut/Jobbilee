@@ -144,6 +144,11 @@ client.on('interactionCreate', async interaction => {
 });
 
 client.on('error', err => console.error('Client error:', err.message));
+client.on('shardError', err => console.error('Shard error:', err.message));
+
+process.on('unhandledRejection', err => {
+  console.error('Unhandled rejection:', err);
+});
 
 // HTTP server — satisfies Render's web service requirement and lets UptimeRobot
 // ping the bot to prevent the free-tier spin-down.
@@ -154,4 +159,6 @@ http.createServer((req, res) => {
   console.log(`Keep-alive server listening on port ${PORT}`);
 });
 
-client.login(TOKEN);
+client.login(TOKEN).catch(err => {
+  console.error('Failed to log in to Discord:', err.message);
+});
