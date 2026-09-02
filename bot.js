@@ -10,7 +10,7 @@ const fs   = require('fs');
 const path = require('path');
 
 const TOKEN      = process.env.DISCORD_TOKEN;
-const CHANNEL_ID = '1491526270939431013';
+const CHANNEL_ID = '1529609152400326686';
 const PORT       = process.env.PORT || 3000;
 
 if (!TOKEN) {
