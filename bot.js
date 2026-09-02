@@ -91,7 +91,7 @@ async function joinVoice() {
   }
 }
 
-client.once('ready', async () => {
+client.once('clientReady', async () => {
   console.log(`Logged in as ${client.user.tag}`);
 
   // Register slash commands globally (propagates within ~1 hour)
