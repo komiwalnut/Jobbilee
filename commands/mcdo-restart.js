@@ -1,12 +1,24 @@
 const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const axios = require('axios');
 
+const COOLDOWN_MS = 30 * 60 * 1000;
+let lastRestartAt = 0;
+
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('mcdo-restart')
         .setDescription('Restart the Mcdollibee bot service on Render'),
 
     async execute(interaction) {
+        const elapsed = Date.now() - lastRestartAt;
+        if (elapsed < COOLDOWN_MS) {
+            const minutesLeft = Math.ceil((COOLDOWN_MS - elapsed) / 60_000);
+            return interaction.reply({
+                content: `Mcdollibee was already restarted recently. Please wait ${minutesLeft} more minute(s) before restarting it again.`,
+                flags: MessageFlags.Ephemeral,
+            });
+        }
+
         await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
         const apiKey    = process.env.RENDER_API_KEY;
@@ -22,7 +34,8 @@ module.exports = {
                 {},
                 { headers: { Authorization: `Bearer ${apiKey}`, Accept: 'application/json' } },
             );
-            await interaction.editReply('Mcdollibee is restarting...');
+            lastRestartAt = Date.now();
+            await interaction.editReply('Mcdollibee is restarting on Render. This usually takes 5-10 minutes before it comes back online and rejoins the voice channel.');
         } catch (err) {
             const status  = err.response?.status;
             const message = err.response?.data?.message ?? err.message;
