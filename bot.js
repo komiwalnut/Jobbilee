@@ -1,16 +1,14 @@
 require('dotenv').config();
-const { Client, GatewayIntentBits, Collection, REST, Routes } = require('discord.js');
+const { Client, GatewayIntentBits } = require('discord.js');
 const {
   joinVoiceChannel,
   VoiceConnectionStatus,
   entersState,
 } = require('@discordjs/voice');
 const http = require('http');
-const fs   = require('fs');
-const path = require('path');
 
 const TOKEN      = process.env.DISCORD_TOKEN;
-const CHANNEL_ID = '1529609152400326686';
+const CHANNEL_ID = '1527002748434911292';
 const PORT       = process.env.PORT || 3000;
 
 if (!TOKEN) {
@@ -24,14 +22,6 @@ const client = new Client({
     GatewayIntentBits.GuildVoiceStates,
   ],
 });
-
-// Load slash commands from ./commands/
-client.commands = new Collection();
-const commandsPath = path.join(__dirname, 'commands');
-for (const file of fs.readdirSync(commandsPath).filter(f => f.endsWith('.js'))) {
-  const cmd = require(path.join(commandsPath, file));
-  client.commands.set(cmd.data.name, cmd);
-}
 
 let connection = null;
 let reconnectTimeout = null;
@@ -93,35 +83,7 @@ async function joinVoice() {
 
 client.once('clientReady', async () => {
   console.log(`Logged in as ${client.user.tag}`);
-
-  // Register slash commands globally (propagates within ~1 hour)
-  try {
-    const rest = new REST().setToken(TOKEN);
-    const commands = [...client.commands.values()].map(cmd => cmd.data.toJSON());
-    await rest.put(Routes.applicationCommands(client.application.id), { body: commands });
-    console.log(`Registered ${commands.length} slash command(s).`);
-  } catch (err) {
-    console.error('Failed to register slash commands:', err.message);
-  }
-
   joinVoice();
-});
-
-client.on('interactionCreate', async interaction => {
-  if (!interaction.isChatInputCommand()) return;
-  const cmd = client.commands.get(interaction.commandName);
-  if (!cmd) return;
-  try {
-    await cmd.execute(interaction);
-  } catch (err) {
-    console.error(`Error in /${interaction.commandName}:`, err.message);
-    const msg = { content: 'Something went wrong running that command.', ephemeral: true };
-    if (interaction.deferred || interaction.replied) {
-      await interaction.editReply(msg).catch(() => {});
-    } else {
-      await interaction.reply(msg).catch(() => {});
-    }
-  }
 });
 
 client.on('error', err => console.error('Client error:', err.message));
