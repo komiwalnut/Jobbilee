@@ -55,6 +55,8 @@ async function joinVoice() {
       console.error(`[${new Date().toISOString()}] Voice connection error:`, err.message);
     });
 
+    let destroyedByDisconnect = false;
+
     connection.on(VoiceConnectionStatus.Disconnected, async () => {
       try {
         await Promise.race([
@@ -63,6 +65,7 @@ async function joinVoice() {
         ]);
       } catch {
         console.warn(`[${new Date().toISOString()}] Disconnected. Rejoining in 5s...`);
+        destroyedByDisconnect = true;
         connection.destroy();
         connection = null;
         reconnectTimeout = setTimeout(joinVoice, 5_000);
@@ -70,6 +73,10 @@ async function joinVoice() {
     });
 
     connection.on(VoiceConnectionStatus.Destroyed, () => {
+      if (destroyedByDisconnect) {
+        destroyedByDisconnect = false;
+        return;
+      }
       console.warn(`[${new Date().toISOString()}] Connection destroyed. Rejoining in 5s...`);
       connection = null;
       reconnectTimeout = setTimeout(joinVoice, 5_000);
